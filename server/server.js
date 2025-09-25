@@ -20,7 +20,7 @@ const io = socketIo(server, {
 
 // Middleware
 app.use(cors({
-  origin: "http://localhost:3000",
+  origin: "http://localhost:3000","https://vconnectapp.netlify.app"  ,
   credentials: true
 }));
 app.use(express.json());
@@ -58,17 +58,16 @@ const connectDB = async () => {
 
 connectDB();
 
-// ENHANCED: Socket.io with private messaging support
+
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
 
-  // NEW: Handle user authentication and store socket ID
-  // FIXED: Handle user authentication and store socket ID
+
 socket.on('authenticate', async (data) => {
   try {
     const { userId } = data;
     
-    // Add validation
+   
     if (!userId) {
       console.error('Authentication failed: userId is undefined');
       return;
@@ -76,7 +75,7 @@ socket.on('authenticate', async (data) => {
     
     socket.userId = userId;
     
-    // Update user's socket ID in database
+    
     const User = require('./models/User');
     await User.findByIdAndUpdate(userId, { 
       socketId: socket.id,
@@ -90,23 +89,22 @@ socket.on('authenticate', async (data) => {
 });
 
 
-  // EXISTING: Join room (for public chat)
+  
   socket.on('join_room', (roomId) => {
     socket.join(roomId);
     console.log(`User ${socket.id} joined room ${roomId}`);
   });
 
-  // NEW: Join private conversation
+ 
   socket.on('join_conversation', (conversationId) => {
     socket.join(`conversation_${conversationId}`);
     console.log(`User ${socket.id} joined conversation ${conversationId}`);
   });
 
-  // EXISTING: Handle sending public messages (slightly modified)
-  // FIXED: Handle sending public messages
+
 socket.on('send_message', async (messageData) => {
   try {
-    // Validate sender ID
+    
     if (!socket.userId) {
       console.error('Message rejected: User not authenticated');
       socket.emit('message_error', { error: 'User not authenticated' });
@@ -125,7 +123,7 @@ socket.on('send_message', async (messageData) => {
     await newMessage.save();
     await newMessage.populate('sender', 'username');
     
-    // Emit to all users in the room
+   
     io.to(messageData.room).emit('receive_message', {
       _id: newMessage._id,
       content: newMessage.content,

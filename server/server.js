@@ -9,7 +9,20 @@ const authRoutes = require('./routes/auth');
 const chatRoutes = require('./routes/chat');
 
 const app = express();
+app.use(express.json());
 const server = http.createServer(app);
+
+app.use(cors({
+  origin: [
+    "http://localhost:3000",
+    "https://vconnectapp.netlify.app"
+  ],
+  credentials: true
+}));
+
+// Preflight support for all routes
+app.options('*', cors());
+
 const io = socketIo(server, {
   cors: {
     origin: [
@@ -21,15 +34,8 @@ const io = socketIo(server, {
   }
 });
 
-// FIXED: Use an array for allowed origins!
-app.use(cors({
-  origin: [
-    "http://localhost:3000",
-    "https://vconnectapp.netlify.app"
-  ],
-  credentials: true
-}));
-app.use(express.json());
+
+
 
 // Routes
 app.use('/api/auth', authRoutes);

@@ -12,15 +12,21 @@ const app = express();
 const server = http.createServer(app);
 const io = socketIo(server, {
   cors: {
-    origin: "http://localhost:3000",
+    origin: [
+      "http://localhost:3000",
+      "https://vconnectapp.netlify.app"
+    ],
     methods: ["GET", "POST"],
     credentials: true
   }
 });
 
-// Middleware
+// FIXED: Use an array for allowed origins!
 app.use(cors({
-  origin: "http://localhost:3000","https://vconnectapp.netlify.app"  ,
+  origin: [
+    "http://localhost:3000",
+    "https://vconnectapp.netlify.app"
+  ],
   credentials: true
 }));
 app.use(express.json());
@@ -62,94 +68,72 @@ connectDB();
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
 
-
-socket.on('authenticate', async (data) => {
-  try {
-    const { userId } = data;
-    
-   
-    if (!userId) {
-      console.error('Authentication failed: userId is undefined');
-      return;
+  socket.on('authenticate', async (data) => {
+    try {
+      const { userId } = data;
+      if (!userId) {
+        console.error('Authentication failed: userId is undefined');
+        return;
+      }
+      socket.userId = userId;
+      const User = require('./models/User');
+      await User.findByIdAndUpdate(userId, { 
+        socketId: socket.id,
+        isOnline: true
+      });
+      console.log(`✅ User ${userId} authenticated with socket ${socket.id}`);
+    } catch (error) {
+      console.error('Authentication error:', error);
     }
-    
-    socket.userId = userId;
-    
-    
-    const User = require('./models/User');
-    await User.findByIdAndUpdate(userId, { 
-      socketId: socket.id,
-      isOnline: true
-    });
-    
-    console.log(`✅ User ${userId} authenticated with socket ${socket.id}`);
-  } catch (error) {
-    console.error('Authentication error:', error);
-  }
-});
+  });
 
-
-  
   socket.on('join_room', (roomId) => {
     socket.join(roomId);
     console.log(`User ${socket.id} joined room ${roomId}`);
   });
 
- 
   socket.on('join_conversation', (conversationId) => {
     socket.join(`conversation_${conversationId}`);
     console.log(`User ${socket.id} joined conversation ${conversationId}`);
   });
 
-
-socket.on('send_message', async (messageData) => {
-  try {
-    
-    if (!socket.userId) {
-      console.error('Message rejected: User not authenticated');
-      socket.emit('message_error', { error: 'User not authenticated' });
-      return;
+  socket.on('send_message', async (messageData) => {
+    try {
+      if (!socket.userId) {
+        console.error('Message rejected: User not authenticated');
+        socket.emit('message_error', { error: 'User not authenticated' });
+        return;
+      }
+      const Message = require('./models/Message');
+      const newMessage = new Message({
+        content: messageData.content,
+        sender: socket.userId, // Use authenticated userId
+        room: messageData.room,
+        messageType: 'room',
+        timestamp: new Date()
+      });
+      await newMessage.save();
+      await newMessage.populate('sender', 'username');
+      io.to(messageData.room).emit('receive_message', {
+        _id: newMessage._id,
+        content: newMessage.content,
+        sender: newMessage.sender,
+        timestamp: newMessage.timestamp,
+        messageType: 'room'
+      });
+      console.log(`✅ Message saved from user ${socket.userId} in room ${messageData.room}`);
+    } catch (error) {
+      console.error('Error saving message:', error);
+      socket.emit('message_error', { error: 'Failed to send message' });
     }
+  });
 
-    const Message = require('./models/Message');
-    const newMessage = new Message({
-      content: messageData.content,
-      sender: socket.userId, // Use authenticated userId
-      room: messageData.room,
-      messageType: 'room',
-      timestamp: new Date()
-    });
-    
-    await newMessage.save();
-    await newMessage.populate('sender', 'username');
-    
-   
-    io.to(messageData.room).emit('receive_message', {
-      _id: newMessage._id,
-      content: newMessage.content,
-      sender: newMessage.sender,
-      timestamp: newMessage.timestamp,
-      messageType: 'room'
-    });
-    
-    console.log(`✅ Message saved from user ${socket.userId} in room ${messageData.room}`);
-  } catch (error) {
-    console.error('Error saving message:', error);
-    socket.emit('message_error', { error: 'Failed to send message' });
-  }
-});
-
-
-  
   socket.on('send_private_message', async (messageData) => {
     try {
       const { conversationId, content, recipientId } = messageData;
-
       const Message = require('./models/Message');
       const Conversation = require('./models/Conversation');
       const User = require('./models/User');
-
-      
       const newMessage = new Message({
         content,
         sender: socket.userId,
@@ -158,12 +142,9 @@ socket.on('send_message', async (messageData) => {
         conversationId,
         readBy: [{ user: socket.userId }]
       });
-
       await newMessage.save();
       await newMessage.populate('sender', 'username avatar');
       await newMessage.populate('recipient', 'username');
-
-      
       await Conversation.findByIdAndUpdate(conversationId, {
         lastMessage: {
           content,
@@ -176,8 +157,6 @@ socket.on('send_message', async (messageData) => {
       }, {
         arrayFilters: [{ 'elem.user': recipientId }]
       });
-
-      
       io.to(`conversation_${conversationId}`).emit('receive_private_message', {
         _id: newMessage._id,
         content: newMessage.content,
@@ -187,8 +166,6 @@ socket.on('send_message', async (messageData) => {
         conversationId,
         messageType: 'private'
       });
-
-      
       const recipient = await User.findById(recipientId);
       if (recipient && recipient.socketId && recipient.isOnline) {
         io.to(recipient.socketId).emit('new_private_message_notification', {
@@ -197,14 +174,12 @@ socket.on('send_message', async (messageData) => {
           content: content.substring(0, 50) + (content.length > 50 ? '...' : '')
         });
       }
-
     } catch (error) {
       console.error('Error sending private message:', error);
       socket.emit('message_error', { error: 'Failed to send private message' });
     }
   });
 
-  
   socket.on('typing', (data) => {
     socket.to(data.room).emit('user_typing', {
       username: data.username,
@@ -212,7 +187,6 @@ socket.on('send_message', async (messageData) => {
     });
   });
 
-  
   socket.on('private_typing', (data) => {
     socket.to(`conversation_${data.conversationId}`).emit('user_private_typing', {
       username: data.username,
@@ -221,14 +195,11 @@ socket.on('send_message', async (messageData) => {
     });
   });
 
-  
   socket.on('mark_as_read', async (data) => {
     try {
       const { conversationId } = data;
-
       const Message = require('./models/Message');
       const Conversation = require('./models/Conversation');
-
       await Message.updateMany(
         {
           conversationId,
@@ -244,7 +215,6 @@ socket.on('send_message', async (messageData) => {
           }
         }
       );
-
       await Conversation.findByIdAndUpdate(conversationId, {
         $set: {
           'unreadCount.$[elem].count': 0
@@ -252,21 +222,17 @@ socket.on('send_message', async (messageData) => {
       }, {
         arrayFilters: [{ 'elem.user': socket.userId }]
       });
-
       socket.to(`conversation_${conversationId}`).emit('messages_read', {
         conversationId,
         readBy: socket.userId
       });
-
     } catch (error) {
       console.error('Error marking messages as read:', error);
     }
   });
 
-  
   socket.on('disconnect', async () => {
     console.log('User disconnected:', socket.id);
-
     try {
       if (socket.userId) {
         const User = require('./models/User');

@@ -17,21 +17,24 @@ export const SocketProvider = ({ children }) => {
   const [onlineUsers, setOnlineUsers] = useState([]);
   const { user } = useAuth();
 
+  
+  const SOCKET_URL = process.env.REACT_APP_SOCKET_URL || 'http://localhost:5000';
+
   useEffect(() => {
     if (user) {
       const token = localStorage.getItem('token');
 
-      const newSocket = io('http://localhost:5000', {
+      
+      const newSocket = io(SOCKET_URL, {
         auth: { token }
       });
-newSocket.on('connect', () => {
-  console.log('Connected to server');
-  
-  console.log('Authenticating with userId:', user.id); 
-  newSocket.emit('authenticate', { userId: user.id });
-  newSocket.emit('join_room', 'general');
-});
 
+      newSocket.on('connect', () => {
+        console.log('Connected to server');
+        console.log('Authenticating with userId:', user.id); 
+        newSocket.emit('authenticate', { userId: user.id });
+        newSocket.emit('join_room', 'general');
+      });
 
       newSocket.on('disconnect', () => {
         console.log('Disconnected from server');
@@ -43,37 +46,32 @@ newSocket.on('connect', () => {
         newSocket.close();
       };
     }
-  }, [user]);
+  }, [user, SOCKET_URL]);
 
-  
   const joinRoom = (roomId) => {
     if (socket) {
       socket.emit('join_room', roomId);
     }
   };
 
-  
   const joinConversation = (conversationId) => {
     if (socket) {
       socket.emit('join_conversation', conversationId);
     }
   };
 
-  
   const sendMessage = (messageData) => {
     if (socket) {
       socket.emit('send_message', messageData);
     }
   };
 
-  
   const sendPrivateMessage = (messageData) => {
     if (socket) {
       socket.emit('send_private_message', messageData);
     }
   };
 
-  
   const sendTyping = (roomId, isTyping) => {
     if (socket && user) {
       socket.emit('typing', {
@@ -84,7 +82,6 @@ newSocket.on('connect', () => {
     }
   };
 
-  
   const sendPrivateTyping = (conversationId, isTyping) => {
     if (socket && user) {
       socket.emit('private_typing', {
@@ -95,7 +92,6 @@ newSocket.on('connect', () => {
     }
   };
 
-  
   const markAsRead = (conversationId) => {
     if (socket) {
       socket.emit('mark_as_read', { conversationId });

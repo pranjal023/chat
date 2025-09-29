@@ -11,6 +11,9 @@ import './Chat.css';
 import axios from 'axios';
 
 const Chat = () => {
+  // ✅ ADD THIS LINE - Environment variable for API URL
+  const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+
   const [messages, setMessages] = useState([]);
   const [currentRoom, setCurrentRoom] = useState('general');
   const [currentView, setCurrentView] = useState('rooms');
@@ -28,23 +31,19 @@ const Chat = () => {
 
   useEffect(() => {
     if (socket && user) {
-      
       socket.on('receive_message', (message) => {
         if (currentView === 'rooms') {
           setMessages(prev => [...prev, message]);
         }
       });
 
-      
       socket.on('receive_private_message', (message) => {
-        if (currentView === 'private' && selectedConversation && 
-            message.conversationId === selectedConversation._id) {
+        if (currentView === 'private' && selectedConversation && message.conversationId === selectedConversation._id) {
           setMessages(prev => [...prev, message]);
         }
         loadConversations();
       });
 
-      
       socket.on('user_typing', (data) => {
         if (data.isTyping) {
           setTypingUsers(prev => {
@@ -58,10 +57,8 @@ const Chat = () => {
         }
       });
 
-      
       socket.on('user_private_typing', (data) => {
-        if (currentView === 'private' && selectedConversation && 
-            data.conversationId === selectedConversation._id) {
+        if (currentView === 'private' && selectedConversation && data.conversationId === selectedConversation._id) {
           setPrivateTypingUsers(prev => ({
             ...prev,
             [data.conversationId]: data.isTyping ? [data.username] : []
@@ -97,9 +94,10 @@ const Chat = () => {
     scrollToBottom();
   }, [messages]);
 
+  // ✅ FIXED - Using environment variable
   const loadMessages = async () => {
     try {
-      const response = await axios.get(`http://localhost:5000/api/chat/messages/${currentRoom}`);
+      const response = await axios.get(`${API_URL}/chat/messages/${currentRoom}`);
       setMessages(response.data.messages);
     } catch (error) {
       console.error('Error loading messages:', error);
@@ -108,18 +106,21 @@ const Chat = () => {
     }
   };
 
+  // ✅ FIXED - Using environment variable
   const loadPrivateMessages = async () => {
     if (!selectedConversation) return;
 
     try {
       setLoading(true);
       const response = await axios.get(
-        `http://localhost:5000/api/chat/conversations/${selectedConversation._id}/messages`
+        `${API_URL}/chat/conversations/${selectedConversation._id}/messages`
       );
       setMessages(response.data.messages || []);
 
       if (socket) {
-        socket.emit('mark_as_read', { conversationId: selectedConversation._id });
+        socket.emit('mark_as_read', {
+          conversationId: selectedConversation._id
+        });
       }
     } catch (error) {
       console.error('Error loading private messages:', error);
@@ -128,18 +129,20 @@ const Chat = () => {
     }
   };
 
+  // ✅ FIXED - Using environment variable
   const loadConversations = async () => {
     try {
-      const response = await axios.get('http://localhost:5000/api/chat/conversations');
+      const response = await axios.get(`${API_URL}/chat/conversations`);
       setConversations(response.data.conversations || []);
     } catch (error) {
       console.error('Error loading conversations:', error);
     }
   };
 
+  // ✅ FIXED - Using environment variable
   const loadOnlineUsers = async () => {
     try {
-      const response = await axios.get('http://localhost:5000/api/chat/users/online');
+      const response = await axios.get(`${API_URL}/chat/users/online`);
       setOnlineUsers(response.data.users || []);
     } catch (error) {
       console.error('Error loading online users:', error);
@@ -150,24 +153,21 @@ const Chat = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  
+  // ✅ FIXED - Using environment variable
   const handleStartPrivateChat = async (selectedUser) => {
     try {
       console.log('🚀 Starting private chat with:', selectedUser.username);
-
       
-      const response = await axios.post('http://localhost:5000/api/chat/conversations', {
+      const response = await axios.post(`${API_URL}/chat/conversations`, {
         participantId: selectedUser._id
       });
 
-      
       setCurrentView('private');
       setSelectedConversation(response.data.conversation);
       setMessages([]);
       setLoading(true);
       setSidebarOpen(false);
 
-      
       if (socket) {
         socket.emit('join_conversation', response.data.conversation._id);
       }
@@ -188,7 +188,6 @@ const Chat = () => {
       setSelectedConversation(conversation);
       setMessages([]);
       setSidebarOpen(false);
-
       console.log('✅ Local conversation created with:', selectedUser.username);
     }
   };
@@ -248,12 +247,17 @@ const Chat = () => {
     setSidebarOpen(!sidebarOpen);
   };
 
-  const currentTypingUsers = currentView === 'private' && selectedConversation 
+  const currentTypingUsers = currentView === 'private' && selectedConversation
     ? privateTypingUsers[selectedConversation._id] || []
     : typingUsers;
 
   if (loading && messages.length === 0) {
-    return <div className="loading">Loading chat...</div>;
+    return (
+      <div className="chat-loading">
+        <div className="loading-spinner"></div>
+        <p>Loading chat...</p>
+      </div>
+    );
   }
 
   return (
@@ -267,10 +271,9 @@ const Chat = () => {
         onToggleSidebar={toggleSidebar}
         onLogout={logout}
         onViewChange={handleViewChange}
-        
         user={user}
       />
-
+      
       <div className="chat-main">
         <div className={`chat-sidebar ${sidebarOpen ? 'open' : ''}`}>
           {currentView === 'rooms' ? (
@@ -278,47 +281,44 @@ const Chat = () => {
               onlineUsers={onlineUsers}
               currentRoom={currentRoom}
               onRoomChange={handleRoomChange}
+              onStartPrivateChat={handleStartPrivateChat}
               currentView={currentView}
-              onStartPrivateChat={handleStartPrivateChat} 
             />
           ) : (
-            <ConversationList
+            <ConversationList 
               conversations={conversations}
-              selectedConversation={selectedConversation}
+              onlineUsers={onlineUsers}
               onConversationSelect={handleConversationSelect}
-              currentUser={user}
+              onStartPrivateChat={handleStartPrivateChat}
+              selectedConversation={selectedConversation}
             />
           )}
         </div>
 
         <div className="chat-content">
           {currentView === 'private' && selectedConversation ? (
-            <PrivateChat
+            <PrivateChat 
               conversation={selectedConversation}
               messages={messages}
+              onSendMessage={handleSendMessage}
               currentUser={user}
               typingUsers={currentTypingUsers}
-              onSendMessage={handleSendMessage}
-              socket={socket}
             />
           ) : (
             <>
               <MessageList 
                 messages={messages}
-                currentUser={user}
+                user={user}
                 typingUsers={currentTypingUsers}
-                messageType="room"
               />
               <div ref={messagesEndRef} />
-
-<MessageInput 
-  onSendMessage={handleSendMessage}
-  currentRoom={currentRoom}
-  currentView={currentView}
-  socket={socket}
-  user={user}
-  placeholder={currentView === 'rooms' ? `Message #${currentRoom}` : 'Type a message...'} 
-/>
+              <MessageInput 
+                onSendMessage={handleSendMessage}
+                currentRoom={currentRoom}
+                currentView={currentView}
+                socket={socket}
+                user={user}
+              />
             </>
           )}
         </div>
